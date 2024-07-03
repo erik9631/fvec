@@ -14,7 +14,7 @@ fn default_alloc_strategy<T: 'static>(vec: &BVec<T>) -> bool{
 pub struct SharedData<T>{
     data: AtomicPtr<T>,
     tail: AtomicPtr<T>,
-    is_growing: s,
+    is_growing: AtomicBool,
     capacity: AtomicUsize,
     grow_pow: AtomicUsize,
     push_mutex: Mutex<()>,
@@ -65,7 +65,7 @@ impl<T: 'static> BVec<T>{
     }
     #[inline(always)]
     pub fn push(&mut self, item: T){
-        if default_alloc_strategy(&self){
+        if default_alloc_strategy(&self) && self.shared_data.is_growing.load(Relaxed) == false{
             self.grow();
         }
 
@@ -76,9 +76,7 @@ impl<T: 'static> BVec<T>{
     }
 
     fn grow(&mut self){
-        if self.shared_data.is_growing.load(Relaxed){
-            return;
-        }
+        self.shared_data.is_growing.store(true, Relaxed);
 
         let shared_data = self.shared_data.clone();
 
@@ -112,7 +110,7 @@ impl<T: 'static> BVec<T>{
                     shared_data.layout.write().expect("Failed to write layout").clone_from(&Some(layout));
                 }
                 shared_data.data.store(new_mem, Relaxed);
-            }
+                shared_data.is_growing.store(false, Relaxed);}
         }));
     }
 }

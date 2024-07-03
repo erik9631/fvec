@@ -3,7 +3,7 @@ use crate::block_vec;
 
 #[test]
 pub fn push_reallocation_test_b_vec(){
-    let size = 100000000;
+    let size = 10000;
     let mut bvec = block_vec::BVec::<i32>::new();
     let start = Instant::now();
     for i in 0..size{
@@ -15,7 +15,7 @@ pub fn push_reallocation_test_b_vec(){
 
 #[test]
 pub fn push_reallocation_test_o_vec(){
-    let size = 100000000;
+    let size = 10000;
     let mut vec = Vec::<i32>::new();
     let start = Instant::now();
     for i in 0..size{

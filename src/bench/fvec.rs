@@ -1,15 +1,15 @@
-use std::thread::sleep;
 use std::time::Instant;
-use tracy::{frame, zone};
-use crate::block_vec;
+use tracy::{frame};
+use crate::fvec;
 
 #[test]
 pub fn push_reallocation_bench_b_vec(){
     let size = 1000000;
-    let mut bvec = block_vec::BVec::<i32>::new(512);
+    let mut bvec = fvec::FVec::<i32>::new(512);
     let start = Instant::now();
     for i in 0..size{
         bvec.push(i);
+        frame!();
     }
     let duration = start.elapsed();
 

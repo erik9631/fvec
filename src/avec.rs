@@ -2,15 +2,23 @@ use std::alloc::{alloc, Layout};
 use std::intrinsics::copy_nonoverlapping;
 use std::ops::{Index, IndexMut};
 use std::slice::from_raw_parts_mut;
+use std::sync::mpsc;
+use std::sync::mpsc::Sender;
+use std::thread;
+use std::thread::JoinHandle;
 use crate::fvec::FVec;
 
+
+const STOP: usize = 0;
+const GROW: usize = 1;
 
 pub struct AVec<'a, T, const CHUNK_COUNT: usize = 4> {
     chunks_raw: *mut FVec<T>,
     chunks: &'a mut [FVec<T>],
     current_chunk: usize,
-    copies_behind: u8,
-    largest_chunk: usize,
+    largest_chunk: usize, // Should be owned by the grow thread. Make it a local thread variable
+    tx: Sender<(usize, usize)>,
+    grow_thread: JoinHandle<()>
 }
 impl<'a, T, const CHUNK_COUNT: usize> AVec<'a, T, CHUNK_COUNT> {
     const CHUNKS: usize = CHUNK_COUNT;
@@ -40,12 +48,15 @@ impl<'a, T, const CHUNK_COUNT: usize> AVec<'a, T, CHUNK_COUNT> {
         }
         let chunks = unsafe { from_raw_parts_mut(chunks_raw, CHUNK_COUNT)};
 
+        let (tx, grow_thread) = Self::start_grow_thread(chunks_raw);
+
         AVec {
             chunks_raw,
             chunks,
             current_chunk: 0,
-            copies_behind: 0,
-            largest_chunk: 3
+            largest_chunk: 3,
+            tx,
+            grow_thread
         }
     }
 
@@ -70,31 +81,36 @@ impl<'a, T, const CHUNK_COUNT: usize> AVec<'a, T, CHUNK_COUNT> {
         let chunk = &mut self.chunks[self.current_chunk];
         chunk.push_raw(val);
         if chunk.len == chunk.capacity{
-            self.copies_behind += 1;
             self.current_chunk = Self::rotate_right(self.current_chunk, 1);
-            self.grow();
+            self.tx.send((GROW, self.current_chunk)).expect("Failed to send grow message");
         }
     }
 
-    fn grow(&mut self){
-        let mut copies_behind = self.copies_behind;
-        let copies_behind_original = copies_behind;
-        let current_chunk = self.current_chunk;
+    fn start_grow_thread(chunks_raw: *mut FVec<T>) -> (Sender<(usize, usize)>, JoinHandle<()>){
+        let (tx, rx) = mpsc::channel::<(usize, usize)>();
+        let chunks = chunks_raw;
+        let handle = thread::spawn(move || {
+            let mut replace_index = 0;
+            let mut largest_index = CHUNK_COUNT - 1;
+            let chunks = unsafe {from_raw_parts_mut(chunks, CHUNK_COUNT)}; // They will never overlap so it is fine
+            while let message = rx.recv().expect("Grow thread hung up!") {
+                if message.0 == STOP {
+                    break;
+                }
+                let current_index = message.1;
+                let new_chunk = chunks[largest_index].grow_from_last();
 
-        while copies_behind != 0 {
-            let new_chunk = self.chunks[self.largest_chunk].grow_from_last();
-            self.largest_chunk = Self::rotate_right(self.largest_chunk, 1);
+                let replace_chunk = &chunks[replace_index];
+                let current_chunk = &chunks[current_index];
 
-            let replace_index = Self::rotate_left(current_chunk, copies_behind as usize);
-            let replace_chunk = &self.chunks[replace_index];
-            let current_chunk = &self.chunks[current_chunk];
-            unsafe {copy_nonoverlapping(replace_chunk.data, current_chunk.data, replace_chunk.len)};
+                unsafe {copy_nonoverlapping(replace_chunk.data, current_chunk.data, replace_chunk.len)};
 
-            self.chunks[replace_index].free();
-            self.chunks[replace_index] = new_chunk;
-            copies_behind -= 1;
-        }
-        self.copies_behind -= copies_behind_original;
+                chunks[replace_index].free();
+                chunks[replace_index] = new_chunk;
+            }
+        });
+
+        (tx, handle)
     }
 }
 

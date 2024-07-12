@@ -24,7 +24,7 @@ pub fn push_reallocation_bench_b_vec(){
 
 #[test]
 pub fn push_reallocation_bench_a_vec(){
-    let size = 100000;
+    let size = 1000000000;
     let mut bvec = FVec::<i32>::new(512);
     let start = Instant::now();
     for i in 0..size{
@@ -42,7 +42,7 @@ pub fn push_reallocation_bench_a_vec(){
 
 #[test]
 pub fn push_reallocation_bench_o_vec(){
-    let size = 100000;
+    let size = 1000000000;
     let mut vec = Vec::<i32>::new();
     let start = Instant::now();
     for i in 0..size{

@@ -1,0 +1,13 @@
+[package]
+name = "BlockVector"
+version = "0.1.0"
+edition = "2021"
+
+[profile.test]
+debug = true
+inherits = "release"
+
+[dev-dependencies.tracy]
+package = "tracy_full"
+version = "1.8.0"
+features = []
